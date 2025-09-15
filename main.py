@@ -162,7 +162,6 @@ async def search_card_acs(request: Request):
 
         # 如果是base64处理过需要解码
         Card = tool.decodeBase64(Card)
-        Card = Card[0:19]
 
         Reader = int(Reader)
 
@@ -182,7 +181,7 @@ async def search_card_acs(request: Request):
 
     except (NotFound, TypeError, ValueError, BadRequest) as e:
         logger.info(f"searchCardAcs error -> " + e.message)
-        return response.json({"ActIndex": Reader, "AcsRes": "0", "Time": "0"})
+        return response.json({"ActIndex": 0, "AcsRes": "0", "Time": "0"})
 
 
 if __name__ == "__main__":
