@@ -68,7 +68,8 @@ def decodeBase64(value):
     value = base64.b64decode(value)
     return value
 
+
 def getNowTime():
-        # 获取当前时间
-        now = datetime.now()
-        return now.strftime("%Y-%m-%d %H:%M:%S")
+    # 获取当前时间
+    now = datetime.now()
+    return now.strftime("%Y-%m-%d %H:%M:%S")

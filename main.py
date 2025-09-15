@@ -123,16 +123,21 @@ async def get_status(request: Request):
 
     logger.info(f"getStatus -> {dict(request.args)}")
 
-    key = request.args.get("Key")
-    Serial = request.args.get("Serial")
-    if not key or not Serial:
-        raise BadRequest("缺少参数: Key, Serial")
+    try:
+        key = request.args.get("Key")
+        Serial = request.args.get("Serial")
+        if not key or not Serial:
+            raise BadRequest("缺少参数: Key, Serial")
 
-    # 更新或创建设备并更新活跃状态
-    await Device.update_or_create_device(Serial)
+        # 更新或创建设备并更新活跃状态
+        await Device.update_or_create_device(Serial)
 
-    # 返回记录信息
-    return response.json({"Key": key})
+        # 返回记录信息
+        return response.json({"Key": key})
+
+    except (NotFound, TypeError, ValueError, BadRequest) as e:
+        logger.info(f"getStatus error -> " + e.message)
+        return response.json({"Key": key})
 
 
 @app.route("/searchCardAcs")
@@ -140,34 +145,44 @@ async def search_card_acs(request: Request):
 
     logger.info(f"searchCardAcs -> {dict(request.args)}")
 
-    type = request.args.get("type")
-    Reader = request.args.get("Reader")
-    Card = request.args.get("Card")
-    Serial = request.args.get("Serial")
+    try:
+        type = int(request.args.get("type"))
+        Reader = int(request.args.get("Reader"))
+        Card = request.args.get("Card")
+        Serial = request.args.get("Serial")
 
-    # 处理Base64编码的二维码
-    if int(type) != 9:
-        raise BadRequest("类型必须为二维码")
+        type = request.args.get("type")
+        Reader = request.args.get("Reader")
+        Card = request.args.get("Card")
+        Serial = request.args.get("Serial")
 
-    # 如果是base64处理过需要解码
-    # Card = tool.decodeBase64(Card)
-    # Card = Card[0:19]
+        # 处理Base64编码的二维码
+        if int(type) != 9:
+            raise BadRequest("类型必须为二维码")
 
-    Reader = int(Reader)
+        # 如果是base64处理过需要解码
+        Card = tool.decodeBase64(Card)
+        Card = Card[0:19]
 
-    # 更新或创建设备并更新活跃状态
-    await Device.update_or_create_device(Serial)
+        Reader = int(Reader)
 
-    # 如果是进入，维护进入记录
-    if Reader == 0:
-        await EnterLog.maintain_enter_log(Card, Serial)
-    # 如果是退出，维护退出记录
-    elif Reader == 1:
-        await EnterLog.maintain_leave_log(Card, Serial)
+        # 更新或创建设备并更新活跃状态
+        await Device.update_or_create_device(Serial)
 
-    print(f"类型: {type}, 进出: {Reader}, 内容: {Card}, 设备: {Serial}")
+        # 如果是进入，维护进入记录
+        if Reader == 0:
+            await EnterLog.maintain_enter_log(Card, Serial)
+        # 如果是退出，维护退出记录
+        elif Reader == 1:
+            await EnterLog.maintain_leave_log(Card, Serial)
 
-    return response.json({"ActIndex": Reader, "AcsRes": "1", "Time": "1"})
+        print(f"类型: {type}, 进出: {Reader}, 内容: {Card}, 设备: {Serial}")
+
+        return response.json({"ActIndex": Reader, "AcsRes": "1", "Time": "1"})
+
+    except (NotFound, TypeError, ValueError, BadRequest) as e:
+        logger.info(f"searchCardAcs error -> " + e.message)
+        return response.json({"ActIndex": Reader, "AcsRes": "0", "Time": "0"})
 
 
 if __name__ == "__main__":
