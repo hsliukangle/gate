@@ -161,7 +161,7 @@ async def search_card_acs(request: Request):
             raise BadRequest("类型必须为二维码")
 
         # 如果是base64处理过需要解码
-        Card = tool.decodeBase64(Card)
+        Card = tool.decodeBase64(Card).decode("utf-8")
 
         Reader = int(Reader)
 
