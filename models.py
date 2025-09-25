@@ -67,9 +67,6 @@ class User(Model):
 
 class EnterLog(Model):
     id = fields.IntField(pk=True, unsigned=True, auto_increment=True)
-    user = fields.ForeignKeyField(
-        "models.User", related_name="enter_logs", description="用户ID"
-    )
     qrcode = fields.CharField(max_length=255, null=True, description="二维码")
     enter_at = MyDatetimeField(null=True, description="进入时间")
     enter_device_no = fields.CharField(
@@ -81,6 +78,8 @@ class EnterLog(Model):
     )
     created_at = MyDatetimeField(null=True)
     updated_at = MyDatetimeField(null=True)
+    user_id = fields.IntField(description="用户ID")
+    order_id = fields.IntField(description="订单ID")
 
     class Meta:
         table = "enter_log"
@@ -216,7 +215,7 @@ class Order(Model):
         description="状态 10已创建 20付款中 30已完成 40已失败 50已取消",
     )
     note = fields.TextField(description="备注")
-    member_id = fields.IntField(description="用户ID")
+    user_id = fields.IntField(description="用户ID")
     paid_at = MyDatetimeField(null=True)
     created_at = MyDatetimeField(null=True)
     updated_at = MyDatetimeField(null=True)
@@ -251,7 +250,7 @@ class Order(Model):
             money=money,
             status=cls.STATUS_PAYING,  # 直接就是付款中
             note="",
-            member_id=user.id,
+            user_id=user.id,
             created_at=current_time,
             updated_at=current_time,
         )
