@@ -86,9 +86,9 @@ class EnterLog(Model):
         table_description = "用户进入记录表"
 
     @classmethod
-    async def get_enter_log(cls, openid, order_id=0):
-        # 获取用户信息
-        user = await User.get_or_none(openid=openid)
+    async def get_enter_log(cls, user_id, order_id=0):
+        """获取用户信息"""
+        user = await User.get_or_none(id=user_id)
         if not user:
             raise NotFound("未找到用户")
 
@@ -234,9 +234,9 @@ class Order(Model):
         return now + random_part
 
     @classmethod
-    async def create_order(cls, openid, money):
+    async def create_order(cls, user_id, money):
         """获取用户信息"""
-        user = await User.get_or_none(openid=openid)
+        user = await User.get_or_none(id=user_id)
         if not user:
             raise NotFound("未找到用户")
 
@@ -255,7 +255,7 @@ class Order(Model):
             updated_at=current_time,
         )
 
-        return order
+        return order, user
 
     @classmethod
     async def update_order_paid(cls, order_no, transaction_id):

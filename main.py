@@ -102,13 +102,11 @@ async def login(request: Request):
 
 @app.route("/qrcode")
 async def qrcode(request: Request):
-    openid = request.args.get("openid")
-    if not openid:
-        raise BadRequest("缺少参数: openid")
+    user_id = request.args.get("user_id")
+    if not user_id:
+        raise BadRequest("缺少参数: user_id")
 
-    enter_log = await EnterLog.get_enter_log(openid)
-
-    logger.info(f"qrcode -> openid: {openid}, qrcode: {enter_log.qrcode}")
+    enter_log = await EnterLog.get_enter_log(user_id)
 
     # 返回记录信息
     return response.json(
@@ -123,16 +121,16 @@ async def qrcode(request: Request):
 @app.route("/pay")
 async def pay(request: Request):
 
-    openid = request.args.get("openid")
-    if not openid:
-        raise BadRequest("缺少参数: openid")
+    user_id = request.args.get("user_id")
+    if not user_id:
+        raise BadRequest("缺少参数: user_id")
 
     try:
         money = 0.01
         # 创建订单
-        order = await Order.create_order(openid, money)
+        order, user = await Order.create_order(user_id, money)
         # 预支付
-        pay_res = wxpayService().prepay(order, openid)
+        pay_res = wxpayService().prepay(order, user.openid)
         return response.json(pay_res)
     except Exception as e:
         logger.error(f"支付异常请稍后重试, error: {e}")
