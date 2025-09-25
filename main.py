@@ -103,10 +103,11 @@ async def login(request: Request):
 @app.route("/qrcode")
 async def qrcode(request: Request):
     user_id = request.args.get("user_id")
+    order_id = request.args.get("order_id")
     if not user_id:
         raise BadRequest("缺少参数: user_id")
 
-    enter_log = await EnterLog.get_enter_log(user_id)
+    enter_log = await EnterLog.get_enter_log(user_id, order_id)
 
     # 返回记录信息
     return response.json(
@@ -116,6 +117,23 @@ async def qrcode(request: Request):
             "leave_at": enter_log.leave_at.isoformat() if enter_log.leave_at else None,
         }
     )
+
+
+@app.route("/coach_qrcode")
+async def order(request: Request):
+    user_id = request.args.get("user_id")
+    if not user_id:
+        raise BadRequest("缺少参数: user_id")
+
+    order = await Order.get_user_last_order(user_id)
+    if not order:
+        raise BadRequest("用户无最新订单")
+
+    enter_log = await EnterLog.get_enter_log(user_id, order.id)
+    if not enter_log:
+        raise BadRequest("用户无最新入闸记录")
+
+    return response.json({"order_id": order.id})
 
 
 @app.route("/pay")

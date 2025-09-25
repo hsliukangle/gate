@@ -86,7 +86,7 @@ class EnterLog(Model):
         table_description = "用户进入记录表"
 
     @classmethod
-    async def get_enter_log(cls, user_id, order_id=0):
+    async def get_enter_log(cls, user_id, order_id):
         """获取用户信息"""
         user = await User.get_or_none(id=user_id)
         if not user:
@@ -279,3 +279,12 @@ class Order(Model):
             order.updated_at = getNowTime()
             await order.save()
         return order
+
+    @classmethod
+    async def get_user_last_order(cls, user_id):
+        """根据用户ID获取用户最新订单"""
+        return (
+            await cls.get_or_none(user_id=user_id, status=cls.STATUS_COMPLETED)
+            .order_by("-created_at")
+            .first()
+        )
