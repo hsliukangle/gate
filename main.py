@@ -154,6 +154,8 @@ async def pay_notify(request: Request):
         out_trade_no = resource.get("out_trade_no")
         transaction_id = resource.get("transaction_id")
         trade_state = resource.get("trade_state")
+        payer = resource.get("payer")
+        openid = payer.get("openid")
 
         # 根据交易状态处理订单
         if trade_state != "SUCCESS":
