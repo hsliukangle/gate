@@ -97,7 +97,9 @@ class EnterLog(Model):
         enter_log = await cls.get_or_none(
             user_id=user.id, order_id=order_id, leave_at=None
         )
-        if not enter_log:
+
+        # 必须是普通用户才能创建
+        if not order_id and not enter_log:
             enter_log = await cls.create(
                 user_id=user.id,
                 order_id=order_id,
