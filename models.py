@@ -248,7 +248,7 @@ class Order(Model):
         order = await cls.create(
             order_no=order_no,
             out_order_no="",
-            money=int(money),
+            money=money,
             status=cls.STATUS_PAYING,  # 直接就是付款中
             note="",
             member_id=user.id,
