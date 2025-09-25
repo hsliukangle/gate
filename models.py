@@ -87,28 +87,25 @@ class EnterLog(Model):
         table_description = "用户进入记录表"
 
     @classmethod
-    async def get_or_create_enter_log(cls, openid):
+    async def get_enter_log(cls, openid, order_id=0):
         # 获取用户信息
         user = await User.get_or_none(openid=openid)
-        current_time = getNowTime()
-
         if not user:
             raise NotFound("未找到用户")
 
-        enter_log = await cls.get_or_none(user_id=user.id, leave_at=None)
+        current_time = getNowTime()
 
+        enter_log = await cls.get_or_none(
+            user_id=user.id, order_id=order_id, leave_at=None
+        )
         if not enter_log:
-
-            # 生成UUID
-            log_uuid = str(uuid.uuid4())
-
             enter_log = await cls.create(
                 user_id=user.id,
-                qrcode=log_uuid,
+                order_id=order_id,
+                qrcode=str(uuid.uuid4()),
                 created_at=current_time,
                 updated_at=current_time,
             )
-
         return enter_log
 
     @classmethod
@@ -238,7 +235,12 @@ class Order(Model):
         return now + random_part
 
     @classmethod
-    async def create_order(cls, member_id, money):
+    async def create_order(cls, openid, money):
+        """获取用户信息"""
+        user = await User.get_or_none(openid=openid)
+        if not user:
+            raise NotFound("未找到用户")
+
         """创建订单"""
         current_time = getNowTime()
         order_no = cls.generate_order_no()
@@ -246,10 +248,10 @@ class Order(Model):
         order = await cls.create(
             order_no=order_no,
             out_order_no="",
-            money=int(money * 100),
-            status=cls.STATUS_CREATED,
+            money=int(money),
+            status=cls.STATUS_PAYING,  # 直接就是付款中
             note="",
-            member_id=member_id,
+            member_id=user.id,
             created_at=current_time,
             updated_at=current_time,
         )
@@ -259,11 +261,22 @@ class Order(Model):
     @classmethod
     async def update_order_paid(cls, order_no, transaction_id):
         """根据订单号更新订单为已支付"""
-        order = await cls.get_or_none(order_no=order_no)
+        order = await cls.get_or_none(order_no=order_no, status=cls.STATUS_PAYING)
         if order:
             order.status = cls.STATUS_COMPLETED
             order.out_order_no = transaction_id
             order.paid_at = getNowTime()
+            order.updated_at = getNowTime()
+            await order.save()
+        return order
+
+    @classmethod
+    async def update_order_pay_fail(cls, order_no, note):
+        """根据订单号更新订单为失败"""
+        order = await cls.get_or_none(order_no=order_no)
+        if order:
+            order.status = cls.STATUS_FAILED
+            order.note = note
             order.updated_at = getNowTime()
             await order.save()
         return order

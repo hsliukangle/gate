@@ -8,7 +8,6 @@ from config import DB_CONFIG
 from sanic.exceptions import NotFound, BadRequest
 from loguru import logger
 from service.wxpayService import wxpayService
-from service.orderService import orderService
 
 # 加载.env文件
 load_dotenv()
@@ -107,7 +106,7 @@ async def qrcode(request: Request):
     if not openid:
         raise BadRequest("缺少参数: openid")
 
-    enter_log = await EnterLog.get_or_create_enter_log(openid)
+    enter_log = await EnterLog.get_enter_log(openid)
 
     logger.info(f"qrcode -> openid: {openid}, qrcode: {enter_log.qrcode}")
 
@@ -131,12 +130,14 @@ async def pay(request: Request):
     try:
         money = 0.01
         # 创建订单
-        order = await orderService().add_order(openid, money)
+        order = await Order.create_order(openid, money)
         # 预支付
-        pay_res = wxpayService().prepay(order, openid, order.money)
+        pay_res = wxpayService().prepay(order, openid)
         return response.json(pay_res)
     except Exception as e:
         logger.error(f"支付异常请稍后重试, error: {e}")
+        # 更新订单为失败
+        await Order.update_order_pay_fail(order.order_no, str(e))
         raise BadRequest(f"支付异常请稍后重试")
 
 
@@ -163,10 +164,9 @@ async def pay_notify(request: Request):
         if not order:
             raise Exception(f"订单不存在 {out_trade_no}")
 
-        logger.info(f"order: {order.order_no}")
-
-        # 处理订单
         # 创建入闸机二维码
+        await EnterLog.get_enter_log(openid, order.id)
+
         return response.json({"code": 200, "msg": "success"})
 
     except Exception as e:

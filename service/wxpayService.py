@@ -31,8 +31,9 @@ class wxpayService:
         )
 
     # 支付
-    def prepay(self, order, openid, money):
+    def prepay(self, order, openid):
         out_trade_no = str(order.order_no)
+        money = int(order.money * 100)
         try:
             http_code, http_result = self.wxpay.pay(
                 description="门禁系统充值",
