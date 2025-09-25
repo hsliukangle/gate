@@ -2,6 +2,8 @@ from tortoise.models import Model
 from tortoise import fields
 from tool import getNowTime
 import uuid
+from datetime import datetime
+import random
 from sanic.exceptions import NotFound
 
 
@@ -194,3 +196,74 @@ class Device(Model):
             await device.save(update_fields=update_fields)
 
         return device
+
+
+class Order(Model):
+    # 订单状态常量
+    STATUS_CREATED = 10  # 已创建
+    STATUS_PAYING = 20  # 付款中
+    STATUS_COMPLETED = 30  # 已完成
+    STATUS_FAILED = 40  # 已失败
+    STATUS_CANCELLED = 50  # 已取消
+
+    id = fields.IntField(pk=True, unsigned=True, auto_increment=True)
+    order_no = fields.CharField(max_length=255, default="", description="订单号")
+    out_order_no = fields.CharField(
+        max_length=255, default="", description="外部订单号"
+    )
+    money = fields.DecimalField(
+        max_digits=8, decimal_places=2, default=0.00, description="金额"
+    )
+    status = fields.IntField(
+        default=STATUS_CREATED,
+        description="状态 10已创建 20付款中 30已完成 40已失败 50已取消",
+    )
+    note = fields.TextField(description="备注")
+    member_id = fields.IntField(description="用户ID")
+    paid_at = MyDatetimeField(null=True)
+    created_at = MyDatetimeField(null=True)
+    updated_at = MyDatetimeField(null=True)
+
+    class Meta:
+        table = "orders"
+        table_description = "订单表"
+
+    @classmethod
+    def generate_order_no(cls):
+        # 获取当前时间
+        now = datetime.now().strftime("%Y%m%d%H%M%S")
+        # 生成5位随机数
+        random_part = str(random.randint(10000, 99999))
+        # 组合订单号
+        return now + random_part
+
+    @classmethod
+    async def create_order(cls, member_id, money):
+        """创建订单"""
+        current_time = getNowTime()
+        order_no = cls.generate_order_no()
+
+        order = await cls.create(
+            order_no=order_no,
+            out_order_no="",
+            money=int(money * 100),
+            status=cls.STATUS_CREATED,
+            note="",
+            member_id=member_id,
+            created_at=current_time,
+            updated_at=current_time,
+        )
+
+        return order
+
+    @classmethod
+    async def update_order_paid(cls, order_no, transaction_id):
+        """根据订单号更新订单为已支付"""
+        order = await cls.get_or_none(order_no=order_no)
+        if order:
+            order.status = cls.STATUS_COMPLETED
+            order.out_order_no = transaction_id
+            order.paid_at = getNowTime()
+            order.updated_at = getNowTime()
+            await order.save()
+        return order

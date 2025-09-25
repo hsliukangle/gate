@@ -3,10 +3,12 @@ from sanic import Sanic, response
 from sanic.request import Request
 from dotenv import load_dotenv
 from tortoise import Tortoise
-from models import User, EnterLog, Device
+from models import User, EnterLog, Device, Order
 from config import DB_CONFIG
 from sanic.exceptions import NotFound, BadRequest
 from loguru import logger
+from service.wxpayService import wxpayService
+from service.orderService import orderService
 
 # 加载.env文件
 load_dotenv()
@@ -110,7 +112,66 @@ async def qrcode(request: Request):
     logger.info(f"qrcode -> openid: {openid}, qrcode: {enter_log.qrcode}")
 
     # 返回记录信息
-    return response.json({"qrcode": enter_log.qrcode})
+    return response.json(
+        {
+            "qrcode": enter_log.qrcode,
+            "enter_at": enter_log.enter_at.isoformat() if enter_log.enter_at else None,
+            "leave_at": enter_log.leave_at.isoformat() if enter_log.leave_at else None,
+        }
+    )
+
+
+@app.route("/pay")
+async def pay(request: Request):
+
+    openid = request.args.get("openid")
+    if not openid:
+        raise BadRequest("缺少参数: openid")
+
+    try:
+        money = 0.01
+        # 创建订单
+        order = await orderService().add_order(openid, money)
+        # 预支付
+        pay_res = wxpayService().prepay(order, openid, order.money)
+        return response.json(pay_res)
+    except Exception as e:
+        logger.error(f"支付异常请稍后重试, error: {e}")
+        raise BadRequest(f"支付异常请稍后重试")
+
+
+@app.route("/pay_notify", methods=["POST"])
+async def pay_notify(request: Request):
+
+    try:
+        # 验证通知签名
+        verify_res = wxpayService().verify_notify_sign(request.headers, request.body)
+        if verify_res is None:
+            raise Exception("支付通知签名验证失败")
+
+        resource = verify_res.get("resource", {})
+        out_trade_no = resource.get("out_trade_no")
+        transaction_id = resource.get("transaction_id")
+        trade_state = resource.get("trade_state")
+
+        # 根据交易状态处理订单
+        if trade_state != "SUCCESS":
+            raise Exception(f"支付通知状态非正常 {str(resource)}")
+
+        # 更新订单为已支付
+        order = await Order.update_order_paid(out_trade_no, transaction_id)
+        if not order:
+            raise Exception(f"订单不存在 {out_trade_no}")
+
+        logger.info(f"order: {order.order_no}")
+
+        # 处理订单
+        # 创建入闸机二维码
+        return response.json({"code": 200, "msg": "success"})
+
+    except Exception as e:
+        logger.error(f"回调异常, error: {e}")
+        raise BadRequest(f"回调异常")
 
 
 """
