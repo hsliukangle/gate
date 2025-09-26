@@ -4,7 +4,7 @@ from tool import getNowTime
 import uuid
 from datetime import datetime
 import random
-from sanic.exceptions import NotFound
+from sanic.exceptions import BadRequest
 
 
 # 自定义MyDatetimeField，用于MySQL中设置DATETIME(0)
@@ -90,7 +90,7 @@ class EnterLog(Model):
         """获取用户信息"""
         user = await User.get_or_none(id=user_id)
         if not user:
-            raise NotFound("未找到用户")
+            raise BadRequest("未找到用户")
 
         current_time = getNowTime()
 
@@ -98,7 +98,7 @@ class EnterLog(Model):
             user_id=user.id, order_id=order_id, leave_at=None
         )
 
-        # 必须是普通用户才能创建
+        # 普通用户才能直接创建，教练需要支付创建
         if not order_id and not enter_log:
             enter_log = await cls.create(
                 user_id=user.id,
@@ -110,40 +110,38 @@ class EnterLog(Model):
         return enter_log
 
     @classmethod
-    async def maintain_enter_log(cls, qrcode, device_no):
-        """维护进入记录"""
-        # 检查是否存在未完成的记录
-        enter_log = await cls.get_or_none(
-            qrcode=qrcode,
-            enter_at=None,
-            enter_device_no=None,
-            leave_at=None,
-            leave_device_no=None,
-        )
-        current_time = getNowTime()
+    async def update_enter_log(cls, qrcode, device_no):
 
+        # 维护进入
+        enter_log = await cls.get_or_none(qrcode=qrcode)
         if not enter_log:
-            raise NotFound("未找到未进入记录")
+            raise BadRequest(f"未找到 {qrcode} 的授权记录")
+        if enter_log.enter_at or enter_log.enter_device_no:
+            raise BadRequest(f"此二维码 {qrcode} 记录判断此前已进入")
+        if enter_log.leave_at or enter_log.leave_device_no:
+            raise BadRequest(f"此二维码 {qrcode} 记录判断此前已离开")
 
         # 更新进入时间和设备号
+        current_time = getNowTime()
         enter_log.enter_at = current_time
         enter_log.enter_device_no = device_no
         enter_log.updated_at = current_time
         await enter_log.save()
 
     @classmethod
-    async def maintain_leave_log(cls, qrcode, device_no):
-        """维护离开记录"""
-        # 检查是否存在未完成的记录
-        enter_log = await cls.get_or_none(
-            qrcode=qrcode, leave_at=None, leave_device_no=None
-        )
-        current_time = getNowTime()
+    async def update_leave_log(cls, qrcode, device_no):
 
-        if not enter_log or not enter_log.enter_at or not enter_log.enter_device_no:
-            raise NotFound("未找到未离开记录")
+        # 维护离开
+        enter_log = await cls.get_or_none(qrcode=qrcode)
+        if not enter_log:
+            raise BadRequest(f"未找到 {qrcode} 的授权记录")
+        if not enter_log.enter_at or not enter_log.enter_device_no:
+            raise BadRequest(f"此二维码 {qrcode} 记录判断此前还未进入")
+        if enter_log.leave_at or enter_log.leave_device_no:
+            raise BadRequest(f"此二维码 {qrcode} 记录判断此前已离开")
 
         # 更新离开时间和设备号
+        current_time = getNowTime()
         enter_log.leave_at = current_time
         enter_log.leave_device_no = device_no
         enter_log.updated_at = current_time
@@ -240,7 +238,7 @@ class Order(Model):
         """获取用户信息"""
         user = await User.get_or_none(id=user_id)
         if not user:
-            raise NotFound("未找到用户")
+            raise BadRequest("未找到用户")
 
         """创建订单"""
         current_time = getNowTime()

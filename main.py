@@ -1,13 +1,13 @@
-import tool
+from tool import decodeBase64
 from sanic import Sanic, response
 from sanic.request import Request
 from dotenv import load_dotenv
 from tortoise import Tortoise
 from models import User, EnterLog, Device, Order
 from config import DB_CONFIG
-from sanic.exceptions import NotFound, BadRequest
+from sanic.exceptions import BadRequest
 from loguru import logger
-from service.wxpayService import wxpayService
+from service.wechatService import weChatPay, weChatTool
 
 # 加载.env文件
 load_dotenv()
@@ -32,11 +32,6 @@ async def close_db(app, loop):
     await Tortoise.close_connections()
 
 
-@app.exception(NotFound)
-async def handle_not_found(request, exception):
-    return response.json({"code": 404, "msg": str(exception)}, status=404)
-
-
 @app.exception(BadRequest)
 async def handle_bad_request(request, exception):
     return response.json({"code": 400, "msg": str(exception)}, status=400)
@@ -52,60 +47,64 @@ async def index(request: Request):
 """
 
 
-@app.route("/open_id")
-async def open_id(request: Request):
+# 获取openid
+@app.route("/openid")
+async def openid(request: Request):
+
     code = request.args.get("code")
     if not code:
-        raise BadRequest("缺少参数: code")
-    openid = tool.get_openid(code)
+        raise BadRequest("缺少参数")
 
-    logger.info(f"open_id -> code: {code}, openid: {openid}")
+    try:
+        openid = weChatTool().get_openid(code)
+        return response.json({"openid": openid})
+    except Exception as e:
+        logger.error(f"获取openid失败: {e}")
+        raise BadRequest("获取openid失败")
 
-    return response.json({"openid": openid})
 
-
+# 注册&登录
 @app.route("/login", methods=["POST"])
 async def login(request: Request):
+
     openid = request.json.get("openid")
     avatar = request.json.get("avatar")
     nickName = request.json.get("nickName")
     encryptedData = request.json.get("encryptedData")
     iv = request.json.get("iv")
-
     if not openid or not avatar or not nickName or not encryptedData or not iv:
         raise BadRequest("缺少参数: openid, avatar, nickName, encryptedData, iv")
 
-    # 获取session_key并解密数据
-    session_key = tool._session_cache.get(openid)
-    if not session_key:
-        raise BadRequest("未能正常解密session_key")
+    try:
+        session_key = weChatTool().session_cache.get(openid)
+        if not session_key:
+            raise BadRequest("未获取到session_key")
 
-    phone = tool.decrypt_data_get_phone(session_key, encryptedData, iv)
-    print(f"解密得到的手机号: {phone}")
-
-    # 检查用户是否存在，不存在则创建
-    user = await User.get_or_create_user(
-        openid=openid, nickname=nickName, avatar=avatar, phone=phone
-    )
-
-    return response.json(
-        {
-            "id": user.id,
-            "openid": user.openid,
-            "nickname": user.nickname,
-            "avatar": user.avatar,
-            "phone": user.phone,
-            "created_at": user.created_at.isoformat() if user.created_at else None,
-        }
-    )
+        phone = weChatTool().decrypt_data_get_phone(session_key, encryptedData, iv)
+        user = await User.get_or_create_user(
+            openid=openid, nickname=nickName, avatar=avatar, phone=phone
+        )
+        return response.json(
+            {
+                "id": user.id,
+                "openid": user.openid,
+                "nickname": user.nickname,
+                "avatar": user.avatar,
+            }
+        )
+    except Exception as e:
+        logger.error(f"登录失败: {e}")
+        raise BadRequest("登录失败")
 
 
+# 用户查看二维码
 @app.route("/qrcode")
 async def qrcode(request: Request):
+
     user_id = request.args.get("user_id")
     order_id = request.args.get("order_id")
     if not user_id:
-        raise BadRequest("缺少参数: user_id")
+        raise BadRequest("缺少参数")
 
     enter_log = await EnterLog.get_enter_log(user_id, order_id)
 
@@ -119,36 +118,40 @@ async def qrcode(request: Request):
     )
 
 
+# 教练查看二维码
 @app.route("/coach_qrcode")
-async def order(request: Request):
+async def coach_qrcode(request: Request):
+
     user_id = request.args.get("user_id")
     if not user_id:
-        raise BadRequest("缺少参数: user_id")
+        raise BadRequest("缺少参数")
 
     order = await Order.get_user_last_order(user_id)
     if not order:
-        raise BadRequest("用户无最新订单")
+        raise BadRequest("教练无关联订单")
 
     enter_log = await EnterLog.get_enter_log(user_id, order.id)
     if not enter_log:
-        raise BadRequest("用户无最新入闸记录")
+        raise BadRequest("教练无入闸二维码")
 
-    return response.json({"order_id": order.id})
+    return response.json({"order_id": order.id, "qrcode": enter_log.qrcode})
 
 
+# 预支付下单
 @app.route("/pay")
 async def pay(request: Request):
 
     user_id = request.args.get("user_id")
     if not user_id:
-        raise BadRequest("缺少参数: user_id")
+        raise BadRequest("缺少参数")
 
     try:
+        # 金额
         money = 0.01
         # 创建订单
         order, user = await Order.create_order(user_id, money)
         # 预支付
-        pay_res = wxpayService().prepay(order, user.openid)
+        pay_res = weChatPay().prepay(order, user.openid)
         return response.json(pay_res)
     except Exception as e:
         logger.error(f"支付异常请稍后重试, error: {e}")
@@ -157,12 +160,13 @@ async def pay(request: Request):
         raise BadRequest(f"支付异常请稍后重试")
 
 
+# 支付结果通知
 @app.route("/pay_notify", methods=["POST"])
 async def pay_notify(request: Request):
 
     try:
         # 验证通知签名
-        verify_res = wxpayService().verify_notify_sign(request.headers, request.body)
+        verify_res = weChatPay().verify_notify_sign(request.headers, request.body)
         if verify_res is None:
             raise Exception("支付通知签名验证失败")
 
@@ -193,14 +197,13 @@ async def pay_notify(request: Request):
 
 
 """
---------------------------------------------------------服务器接口
+--------------------------------------------------------闸机设备接口
 """
 
 
+# 闸机心跳
 @app.route("/getStatus")
 async def get_status(request: Request):
-
-    logger.info(f"getStatus -> {dict(request.args)}")
 
     try:
         key = request.args.get("Key")
@@ -211,18 +214,15 @@ async def get_status(request: Request):
         # 更新或创建设备并更新活跃状态
         await Device.update_or_create_device(Serial)
 
-        # 返回记录信息
-        return response.json({"Key": key})
+    except Exception as e:
+        logger.info(f"闸机心跳,error: {e}")
 
-    except (NotFound, TypeError, ValueError, BadRequest) as e:
-        logger.info(f"getStatus error -> " + e.message)
-        return response.json({"Key": key})
+    return response.json({"Key": key})
 
 
+# 闸机请求
 @app.route("/searchCardAcs")
 async def search_card_acs(request: Request):
-
-    logger.info(f"searchCardAcs -> {dict(request.args)}")
 
     try:
         type = int(request.args.get("type"))
@@ -230,37 +230,37 @@ async def search_card_acs(request: Request):
         Card = request.args.get("Card")
         Serial = request.args.get("Serial")
 
-        type = request.args.get("type")
-        Reader = request.args.get("Reader")
-        Card = request.args.get("Card")
-        Serial = request.args.get("Serial")
-
         # 处理Base64编码的二维码
         if int(type) != 9:
             raise BadRequest("类型必须为二维码")
 
-        # 如果是base64处理过需要解码
-        Card = tool.decodeBase64(Card).decode("utf-8")
-
-        Reader = int(Reader)
+        # base64解码
+        Card = decodeBase64(Card).decode("utf-8")
 
         # 更新或创建设备并更新活跃状态
         await Device.update_or_create_device(Serial)
 
-        # 如果是进入，维护进入记录
+        # 维护进入记录
         if Reader == 0:
-            await EnterLog.maintain_enter_log(Card, Serial)
-        # 如果是退出，维护退出记录
+            await EnterLog.update_enter_log(Card, Serial)
+        # 维护退出记录
         elif Reader == 1:
-            await EnterLog.maintain_leave_log(Card, Serial)
+            await EnterLog.update_leave_log(Card, Serial)
+        # 如果是其他类型，抛出错误
+        else:
+            raise BadRequest("Reader类型错误")
 
-        print(f"类型: {type}, 进出: {Reader}, 内容: {Card}, 设备: {Serial}")
+        ActIndex = Reader
+        AcsRes = "1"
+        Time = "1"
 
-        return response.json({"ActIndex": Reader, "AcsRes": "1", "Time": "1"})
+    except Exception as e:
+        logger.info(f"闸机请求,error: {e}")
+        ActIndex = 0
+        AcsRes = "0"
+        Time = "0"
 
-    except (NotFound, TypeError, ValueError, BadRequest) as e:
-        logger.info(f"searchCardAcs error -> " + e.message)
-        return response.json({"ActIndex": 0, "AcsRes": "0", "Time": "0"})
+    return response.json({"ActIndex": ActIndex, "AcsRes": AcsRes, "Time": Time})
 
 
 if __name__ == "__main__":

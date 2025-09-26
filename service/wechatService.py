@@ -1,17 +1,22 @@
 import os
 from dotenv import load_dotenv
 from wechatpayv3 import WeChatPay, WeChatPayType
-from loguru import logger
 import json
 import time
 import random
 import string
+import requests
+import base64
+from Crypto.Cipher import AES
 
 # 加载环境变量
 load_dotenv()
 
+# 简单的内存缓存
+_session_cache = {}
 
-class wxpayService:
+
+class weChatPay:
     """
     微信支付服务封装类
     文档参考：
@@ -43,21 +48,19 @@ class wxpayService:
                 notify_url=os.getenv("API_URL") + "/pay_notify",  # 支付结果通知地址
             )
         except Exception as e:
-            info = f"支付下单异常, openid: {openid}, money: {money}, error: {e}"
-            logger.error(info)
-            raise Exception(info)
+            raise Exception(
+                f"支付下单异常, openid: {openid}, money: {money}, error: {e}"
+            )
 
         if http_code != 200:
-            info = f"状态码异常, http_code: {http_code}, pay_result: {http_result}"
-            logger.error(info)
-            raise Exception(info)
+            raise Exception(
+                f"状态码异常, http_code: {http_code}, pay_result: {http_result}"
+            )
 
         pay_result = json.loads(http_result)
 
         if "prepay_id" not in pay_result:
-            info = f"prepay_id不存在, pay_result: {pay_result}"
-            logger.error(info)
-            raise Exception(info)
+            raise Exception(f"prepay_id不存在, pay_result: {pay_result}")
 
         # 生成小程序支付参数
         payment_params = self._generate_payment_params(pay_result["prepay_id"])
@@ -101,3 +104,60 @@ class wxpayService:
             raise FileNotFoundError(f"密钥文件不存在: {file_path}")
         with open(file_path, "r") as f:
             return f.read()
+
+
+class weChatTool:
+    """
+    微信工具类
+    """
+
+    # 通过小程序登录凭证code获取用户的openid
+    def get_openid(self, code):
+        try:
+            appid = os.getenv("APPID")
+            secret = os.getenv("SECRET")
+            url = f"https://api.weixin.qq.com/sns/jscode2session?appid={appid}&secret={secret}&js_code={code}&grant_type=authorization_code"
+            response = requests.get(url)
+            data = response.json()
+        except Exception as e:
+            raise Exception(f"解密code异常, error: {e}")
+
+        openid = data.get("openid", None)
+        session_key = data.get("session_key", None)
+        if not openid or not session_key:
+            raise Exception(f"没有返回openid或session_key {data}")
+
+        _session_cache[openid] = session_key
+
+        return openid
+
+    @property
+    def session_cache(self):
+        """获取session缓存"""
+        return _session_cache
+
+    # 解密手机号
+    def decrypt_data_get_phone(self, session_key, encrypted_data, iv):
+        try:
+            session_key = base64.b64decode(session_key)
+            encrypted_data = base64.b64decode(encrypted_data)
+            iv = base64.b64decode(iv)
+
+            # AES解密
+            cipher = AES.new(session_key, AES.MODE_CBC, iv)
+            decrypted = cipher.decrypt(encrypted_data)
+
+            # 去除PKCS7填充
+            unpad = lambda s: s[: -ord(s[len(s) - 1 :])]
+            decrypted_data = unpad(decrypted)
+
+            # 转换为JSON字符串并返回
+            json_data = json.loads(decrypted_data.decode("utf-8"))
+        except Exception as e:
+            raise Exception(f"解密手机号异常, error: {e}")
+
+        phone = json_data.get("phoneNumber", None)
+        if not phone:
+            raise Exception(f"没有返回手机号 {json_data}")
+
+        return phone
