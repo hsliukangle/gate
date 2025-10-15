@@ -13,6 +13,7 @@ idna==3.10
 iso8601==2.1.0
 loguru==0.7.3
 multidict==6.6.4
+packaging==25.0
 pycparser==2.23
 pycryptodome==3.23.0
 PyMySQL==1.1.2
