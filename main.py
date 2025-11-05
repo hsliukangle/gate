@@ -19,19 +19,6 @@ logger.add("gate.log")
 app = Sanic(__name__)
 
 
-# 为L2DuZBtxbl.txt文件创建专门的路由
-@app.route("/L2DuZBtxbl.txt")
-async def serve_specific_file(request):
-    file_path = "./L2DuZBtxbl.txt"
-    try:
-        with open(file_path, "r") as f:
-            content = f.read()
-        return response.text(content)
-    except Exception as e:
-        logger.error(f"无法读取文件: {e}")
-        return response.text("文件不存在", status=404)
-
-
 # 初始化数据库
 @app.listener("before_server_start")
 async def init_db(app, loop):

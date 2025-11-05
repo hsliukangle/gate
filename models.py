@@ -99,7 +99,7 @@ class EnterLog(Model):
         )
 
         # 普通用户才能直接创建，教练需要支付创建
-        if not order_id and not enter_log:
+        if int(order_id) == 0 and enter_log is None:
             enter_log = await cls.create(
                 user_id=user.id,
                 order_id=order_id,
