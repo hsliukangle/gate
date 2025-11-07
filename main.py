@@ -133,7 +133,11 @@ async def coach_order(request: Request):
     if not order:
         raise BadRequest("教练无关联订单")
 
-    return response.json({"order_id": order.id})
+    enter_log = await EnterLog.get_enter_log_by_user_id(user_id, order.id)
+    if not enter_log:
+        raise BadRequest("教练无入闸二维码")
+
+    return response.json({"order_id": order.id, "qrcode": enter_log.qrcode})
 
 
 # 预支付下单
