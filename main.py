@@ -106,7 +106,7 @@ async def qrcode(request: Request):
     if not user_id:
         raise BadRequest("缺少参数")
 
-    enter_log = await EnterLog.get_enter_log(user_id, order_id)
+    enter_log = await EnterLog.get_enter_log_by_user_id(user_id, order_id)
 
     # 返回记录信息
     return response.json(
@@ -186,7 +186,7 @@ async def pay_notify(request: Request):
             raise Exception(f"订单不存在 {out_trade_no}")
 
         # 创建入闸机二维码
-        await EnterLog.get_enter_log(openid, order.id)
+        await EnterLog.get_enter_log_by_open_id(openid, order.id)
 
         return response.json({"code": 200, "msg": "success"})
 

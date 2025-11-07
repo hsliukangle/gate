@@ -86,28 +86,45 @@ class EnterLog(Model):
         table_description = "用户进入记录表"
 
     @classmethod
-    async def get_enter_log(cls, user_id, order_id):
+    async def create_enter_log(cls, user_id, order_id):
+        """创建用户进入记录"""
+
+        current_time = getNowTime()
+
+        enter_log = await cls.create(
+            user_id=user_id,
+            order_id=order_id,
+            qrcode=str(uuid.uuid4()),
+            created_at=current_time,
+            updated_at=current_time,
+        )
+        return enter_log
+
+    @classmethod
+    async def get_enter_log_by_user_id(cls, user_id, order_id):
         """获取用户信息"""
         user = await User.get_or_none(id=user_id)
         if not user:
             raise BadRequest("未找到用户")
 
-        current_time = getNowTime()
-
         enter_log = await cls.get_or_none(
             user_id=user.id, order_id=order_id, leave_at=None
         )
 
-        # 没有订单直接创建
-        if enter_log is None:
-            enter_log = await cls.create(
-                user_id=user.id,
-                order_id=order_id,
-                qrcode=str(uuid.uuid4()),
-                created_at=current_time,
-                updated_at=current_time,
-            )
+        # 游客没有订单直接创建，教练的已经生成，不会走到这一步
+        if enter_log is None and int(order_id) == 0:
+            enter_log = await cls.create_enter_log(user.id, order_id)
+
         return enter_log
+
+    @classmethod
+    async def get_enter_log_by_open_id(cls, open_id, order_id):
+        """获取用户信息"""
+        user = await User.get_or_none(openid=open_id)
+        if not user:
+            raise BadRequest("未找到用户")
+
+        return await cls.create_enter_log(user.id, order_id)
 
     @classmethod
     async def update_enter_log(cls, qrcode, device_no):
