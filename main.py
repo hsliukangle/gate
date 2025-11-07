@@ -114,13 +114,16 @@ async def qrcode(request: Request):
             "qrcode": enter_log.qrcode,
             "enter_at": enter_log.enter_at.isoformat() if enter_log.enter_at else None,
             "leave_at": enter_log.leave_at.isoformat() if enter_log.leave_at else None,
+            "created_at": (
+                enter_log.created_at.isoformat() if enter_log.created_at else None
+            ),
         }
     )
 
 
-# 教练查看二维码
-@app.route("/coach_qrcode")
-async def coach_qrcode(request: Request):
+# 查询教练订单
+@app.route("/coach_order")
+async def coach_order(request: Request):
 
     user_id = request.args.get("user_id")
     if not user_id:
@@ -134,7 +137,7 @@ async def coach_qrcode(request: Request):
     if not enter_log:
         raise BadRequest("教练无入闸二维码")
 
-    return response.json({"order_id": order.id, "qrcode": enter_log.qrcode})
+    return response.json({"order_id": order.id})
 
 
 # 预支付下单
